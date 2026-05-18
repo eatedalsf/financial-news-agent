@@ -5,6 +5,7 @@ from typing import Optional
 
 from src.delivery.formatter import (
     WHATSAPP_MAX_CHARS,
+    WHATSAPP_TARGET_CHARS,
     format_markdown,
     format_whatsapp,
 )
@@ -56,8 +57,75 @@ def test_whatsapp_header_has_date_and_title():
     assert "2026-05-17" in chunks[0]
 
 
+def test_whatsapp_one_chunk_per_section_when_short():
+    """Six short sections should produce six chunks (header inlines with chunk 1)."""
+    chunks = format_whatsapp(_report())
+    assert len(chunks) == 6
+
+
+def test_whatsapp_chunks_are_short_and_scannable():
+    """Short-section chunks should land near the target, not in the 1500 range."""
+    chunks = format_whatsapp(_report())
+    # Allow header (~50) + target (500) + marker (~15) of headroom on chunk 1.
+    ceiling = WHATSAPP_TARGET_CHARS + 100
+    for c in chunks:
+        assert len(c) <= ceiling, f"chunk too long: {len(c)} chars"
+
+
+def test_whatsapp_summary_uses_bullet_glyph():
+    rep = _report(us_market=_section("🇺🇸 US Market", summary="Stocks rose. Tech led."))
+    body = format_whatsapp(rep)[0]
+    assert "• Stocks rose." in body
+    assert "• Tech led." in body
+
+
+def test_whatsapp_bulletize_normalizes_dash_markers():
+    """Dash- or asterisk-bulleted Claude output should normalize to the • glyph."""
+    summary = "- Stocks rose.\n- Bonds dipped.\n* Yields held."
+    rep = _report(us_market=_section("🇺🇸 US Market", summary=summary))
+    body = format_whatsapp(rep)[0]
+    assert "• Stocks rose." in body
+    assert "• Bonds dipped." in body
+    assert "• Yields held." in body
+    assert "\n- Stocks" not in body
+    assert "\n* Yields" not in body
+
+
+def test_whatsapp_bulletize_preserves_existing_bullet_lines():
+    summary = "• Already bulleted\n• Second one"
+    rep = _report(us_market=_section("🇺🇸 US Market", summary=summary))
+    body = format_whatsapp(rep)[0]
+    assert "• Already bulleted" in body
+    assert "• Second one" in body
+    # No double-bulleting
+    assert "• • " not in body
+
+
+def test_whatsapp_index_line_has_trend_emoji():
+    spx = MarketIndex(
+        symbol="SPX",
+        name="S&P 500",
+        value=5421.30,
+        change=18.42,
+        change_pct=0.34,
+        timestamp=datetime.now(timezone.utc),
+    )
+    dji = MarketIndex(
+        symbol="DJI",
+        name="Dow Jones",
+        value=35200.00,
+        change=-100.00,
+        change_pct=-0.28,
+        timestamp=datetime.now(timezone.utc),
+    )
+    rep = _report(us_market=_section("🇺🇸 US Market", indices=[spx, dji], summary="up."))
+    body = format_whatsapp(rep)[0]
+    assert "📈 `SPX`" in body
+    assert "📉 `DJI`" in body
+
+
 def test_whatsapp_splits_when_too_long():
-    long_summary = "x " * 1200  # ~2400 chars, way over the chunk limit
+    long_summary = "Stocks rose. " * 200  # ~2600 chars, bulletizes to ~200 lines
     rep = _report(us_market=_section("🇺🇸 US Market", summary=long_summary))
     chunks = format_whatsapp(rep)
     assert len(chunks) >= 2
@@ -66,10 +134,26 @@ def test_whatsapp_splits_when_too_long():
     assert f"/{len(chunks)})" in chunks[0]
 
 
+def test_whatsapp_long_section_uses_cont_marker():
+    """When a section is split into multiple chunks, continuations carry '_(cont.)_'."""
+    long_summary = "Stocks rose. " * 200
+    rep = _report(us_market=_section("🇺🇸 US Market", summary=long_summary))
+    chunks = format_whatsapp(rep)
+    assert any("_(cont.)_" in c for c in chunks)
+
+
+def test_whatsapp_long_section_keeps_title_on_each_chunk():
+    long_summary = "Stocks rose. " * 200
+    rep = _report(us_market=_section("🇺🇸 US Market", summary=long_summary))
+    chunks = format_whatsapp(rep)
+    us_chunks = [c for c in chunks if "🇺🇸 US Market" in c]
+    # Multiple US Market chunks expected (original + cont.)
+    assert len(us_chunks) >= 2
+
+
 def test_whatsapp_header_inlined_with_first_section():
     """Header must never be a chunk on its own when multi-chunking."""
-    # Force multi-chunk: one section large enough to push us past the limit.
-    big = "Some narrative. " * 200  # ~3200 chars
+    big = "Stocks rose. " * 200
     rep = _report(us_market=_section("🇺🇸 US Market", summary=big))
     chunks = format_whatsapp(rep)
     assert len(chunks) >= 2
@@ -77,7 +161,7 @@ def test_whatsapp_header_inlined_with_first_section():
     assert "Daily Financial Brief" in chunks[0]
     assert "🇺🇸 US Market" in chunks[0]
     # The header alone is ~50 chars; chunk 1 must be substantially larger.
-    assert len(chunks[0]) > 500, (
+    assert len(chunks[0]) > 200, (
         f"Header was sent as a stand-alone chunk ({len(chunks[0])} chars) — "
         "regression of the header-inlining fix."
     )
@@ -92,12 +176,22 @@ def test_whatsapp_index_line_format():
         change_pct=0.34,
         timestamp=datetime.now(timezone.utc),
     )
-    rep = _report(us_market=_section("🇺🇸 US Market", indices=[spx], summary="up"))
+    rep = _report(us_market=_section("🇺🇸 US Market", indices=[spx], summary="up."))
     body = format_whatsapp(rep)[0]
     assert "`SPX`" in body
     assert "5,421.30" in body
     assert "+18.42" in body
     assert "+0.3%" in body
+
+
+def test_whatsapp_empty_section_is_dropped():
+    """A section with no indices and no summary should not produce a chunk."""
+    rep = _report(saudi_market=_section("🇸🇦 Saudi Market"))
+    chunks = format_whatsapp(rep)
+    # 6 sections - 1 empty = 5 chunks
+    assert len(chunks) == 5
+    for c in chunks:
+        assert "🇸🇦 Saudi Market" not in c
 
 
 # ----- Markdown --------------------------------------------------------- #
