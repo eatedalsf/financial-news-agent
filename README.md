@@ -127,6 +127,78 @@ Run logs land in `logs/agent_<date>.log`.
 
 ---
 
+## WhatsApp chat (Q&A back-channel)
+
+In addition to the daily push, the agent ships a FastAPI webhook that turns
+WhatsApp into a two-way chat. The user texts a question, Claude answers using
+the latest archived brief as context, and the reply lands in the same thread.
+
+### How it fits together
+
+```
+WhatsApp -> Twilio -> POST /webhook (FastAPI on your machine)
+                         -> src.chat.handler.ChatHandler
+                              -> Claude (claude-opus-4-7) + latest report
+                         <- TwiML reply
+       <- WhatsApp reply
+```
+
+`src/chat/`:
+- `context.py` — loads the newest `logs/reports/YYYY-MM-DD.md` as Claude context.
+- `handler.py` — financial-advisor system prompt + Claude call; trims to 1500 chars.
+- `server.py` — FastAPI app exposing `POST /webhook` (TwiML response).
+
+### Run locally
+
+```powershell
+# Terminal 1 — start the webhook (uses .venv + the Anthropic/Twilio keys in .env).
+.\scripts\run_chat_server.ps1
+# Listens on http://0.0.0.0:8000 (override with $env:CHAT_PORT / $env:CHAT_HOST).
+
+# Terminal 2 — tunnel a public HTTPS URL to your local port.
+ngrok http 8000
+# ngrok prints something like: Forwarding  https://abc123.ngrok.io -> http://localhost:8000
+```
+
+Smoke-test the webhook is up:
+```powershell
+curl https://abc123.ngrok.io/                            # health check
+curl -X POST https://abc123.ngrok.io/webhook `
+    -d "Body=hello&From=whatsapp:+15551234567"           # simulated inbound
+```
+
+> The first POST will 403 if `TWILIO_AUTH_TOKEN` is set (signature check). For
+> manual curl testing, either leave the token unset locally or use Twilio's
+> WhatsApp simulator which signs requests correctly.
+
+### Point Twilio at the webhook
+
+**Sandbox** (matches the daily-push setup):
+1. Twilio Console → **Messaging → Try it out → Send a WhatsApp message → Sandbox settings**.
+2. In **"When a message comes in"**, paste `https://<your-ngrok-id>.ngrok.io/webhook`.
+3. Method: `HTTP POST`. Save.
+4. From WhatsApp, send a message to the sandbox number — the webhook fires and Claude replies in-thread.
+
+**WhatsApp Business sender** (production):
+1. Twilio Console → **Messaging → Senders → WhatsApp senders → your sender**.
+2. Set **Inbound Settings → "A message comes in"** to your public webhook URL (`POST`).
+3. Free-form replies only work inside Meta's 24-hour customer-service window; for cold outbound, use an approved template.
+
+### Gotchas
+
+- **ngrok URL changes every restart on the free plan.** Either keep the tunnel
+  running or pay for a reserved domain. Twilio caches nothing — paste the new
+  URL into the sandbox settings each time.
+- **403 from `/webhook`.** Means signature validation rejected the request.
+  Either the `TWILIO_AUTH_TOKEN` is wrong, or you're hitting the webhook with
+  curl/Postman without a signature. Unset the token for local testing.
+- **Replies cut off.** Replies are hard-capped at 1500 chars (one WhatsApp
+  message). Ask follow-ups instead of demanding long-form answers.
+- **"The chat assistant isn't configured."** `ANTHROPIC_API_KEY` is empty in
+  `.env`. Fix and restart the server.
+
+---
+
 ## Tests
 
 ```powershell
@@ -221,6 +293,7 @@ src/
   fetchers/         # One module per source, all inherit BaseFetcher
   processors/       # dedup, watchlist filter, prioritize, summarize
   delivery/         # WhatsApp + formatter
+  chat/             # FastAPI webhook + Claude-backed Q&A handler
   utils/            # logger, cache
 config/
   sources.yaml      # Source registry
