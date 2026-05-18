@@ -17,11 +17,12 @@ Set-Location $ProjectRoot
 $env:PYTHONIOENCODING = "utf-8"
 
 $Port = if ($env:CHAT_PORT) { $env:CHAT_PORT } else { "8000" }
-$Host = if ($env:CHAT_HOST) { $env:CHAT_HOST } else { "0.0.0.0" }
+# Avoid the automatic $Host variable; PowerShell makes it read-only.
+$ServerHost = if ($env:CHAT_HOST) { $env:CHAT_HOST } else { "0.0.0.0" }
 
-Write-Host "Starting chat webhook on http://${Host}:${Port}" -ForegroundColor Cyan
+Write-Host "Starting chat webhook on http://${ServerHost}:${Port}" -ForegroundColor Cyan
 Write-Host "Twilio webhook URL: <ngrok-https-url>/webhook" -ForegroundColor DarkGray
 
 & "$ProjectRoot\.venv\Scripts\python.exe" -m uvicorn src.chat.server:app `
-    --host $Host --port $Port --log-level info
+    --host $ServerHost --port $Port --log-level info
 exit $LASTEXITCODE
