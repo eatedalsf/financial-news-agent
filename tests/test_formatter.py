@@ -66,6 +66,23 @@ def test_whatsapp_splits_when_too_long():
     assert f"/{len(chunks)})" in chunks[0]
 
 
+def test_whatsapp_header_inlined_with_first_section():
+    """Header must never be a chunk on its own when multi-chunking."""
+    # Force multi-chunk: one section large enough to push us past the limit.
+    big = "Some narrative. " * 200  # ~3200 chars
+    rep = _report(us_market=_section("🇺🇸 US Market", summary=big))
+    chunks = format_whatsapp(rep)
+    assert len(chunks) >= 2
+    # Chunk 1 must contain both the header AND content from the first section.
+    assert "Daily Financial Brief" in chunks[0]
+    assert "🇺🇸 US Market" in chunks[0]
+    # The header alone is ~50 chars; chunk 1 must be substantially larger.
+    assert len(chunks[0]) > 500, (
+        f"Header was sent as a stand-alone chunk ({len(chunks[0])} chars) — "
+        "regression of the header-inlining fix."
+    )
+
+
 def test_whatsapp_index_line_format():
     spx = MarketIndex(
         symbol="SPX",

@@ -70,35 +70,59 @@ def _format_indices_compact(indices: List[MarketIndex]) -> str:
 def _chunk_message(
     header: str, sections: List[str], max_chars: int
 ) -> List[str]:
-    """Greedy-pack sections into chunks, adding "(i/n)" suffix when split."""
+    """Greedy-pack sections into chunks; header always inlines with chunk 1.
+
+    Multi-chunk layout reserves space upfront for two things so the final
+    string never exceeds `max_chars`:
+      - `header_reserve` (only counted against chunk 1) — the date banner.
+      - `marker_reserve` (counted against every chunk) — the "_(i/n)_" footer.
+    """
     full = header + "\n\n" + "\n\n".join(sections)
     if len(full) <= max_chars:
         return [full]
 
-    chunks: List[str] = []
-    current = header
+    marker_reserve = 20  # generous bound on "\n\n_(NN/NN)_"
+    header_reserve = len(header) + 2  # "\n\n" separator
+
+    content_chunks: List[str] = []
+    current = ""
     for sec in sections:
+        is_chunk_one = not content_chunks
+        budget = max_chars - marker_reserve - (header_reserve if is_chunk_one else 0)
+
         candidate = current + "\n\n" + sec if current else sec
-        if len(candidate) <= max_chars:
+        if len(candidate) <= budget:
             current = candidate
             continue
+
         # Current chunk full → flush
-        if current.strip():
-            chunks.append(current)
-        # If a single section alone is too long, split it on paragraphs / hard.
-        if len(sec) > max_chars:
-            chunks.extend(_split_long_section(sec, max_chars))
+        if current:
+            content_chunks.append(current)
+            current = ""
+
+        # Re-evaluate budget for the next chunk (header reserve no longer applies)
+        is_chunk_one = not content_chunks
+        budget = max_chars - marker_reserve - (header_reserve if is_chunk_one else 0)
+
+        if len(sec) > budget:
+            content_chunks.extend(_split_long_section(sec, budget))
             current = ""
         else:
             current = sec
-    if current.strip():
-        chunks.append(current)
+    if current:
+        content_chunks.append(current)
+
+    # Prepend header to chunk 1 (always inlined now, never a stand-alone chunk).
+    if content_chunks:
+        content_chunks[0] = header + "\n\n" + content_chunks[0]
 
     # Annotate so the recipient knows there's more to come.
-    total = len(chunks)
+    total = len(content_chunks)
     if total > 1:
-        chunks = [f"{c}\n\n_({i + 1}/{total})_" for i, c in enumerate(chunks)]
-    return chunks
+        content_chunks = [
+            f"{c}\n\n_({i + 1}/{total})_" for i, c in enumerate(content_chunks)
+        ]
+    return content_chunks
 
 
 def _split_long_section(sec: str, max_chars: int) -> List[str]:
