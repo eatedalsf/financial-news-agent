@@ -1,0 +1,38 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Virtual environments ---
+.venv/
+venv/
+ENV/
+env/
+
+# --- Secrets ---
+.env
+.env.local
+config/gmail_credentials.json
+config/gmail_token.json
+
+# --- Generated artifacts ---
+logs/
+data/cache/
+
+# --- IDE / local tooling ---
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini

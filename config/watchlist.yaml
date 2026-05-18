@@ -1,0 +1,13 @@
+# Watchlist filter. Empty lists = pass everything through.
+# Add tickers, sectors, or keywords to narrow the report toward what you care about.
+# `ignored_topics` drops items even if they match a watchlist entry.
+
+stocks:
+  us: []      # e.g., [AAPL, MSFT, NVDA]
+  saudi: []   # e.g., [2222, 1180, 7010]  (Tadawul ticker numbers)
+
+sectors: []   # e.g., [semiconductors, banking, oil_gas]
+
+keywords: [] # e.g., [interest rates, AI, OPEC]
+
+ignored_topics: []  # e.g., [crypto, sports]

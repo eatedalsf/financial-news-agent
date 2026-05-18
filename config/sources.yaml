@@ -1,0 +1,79 @@
+# Source registry. Phase 2+ fetchers read from here.
+# Toggle `enabled: false` to skip a source without removing it.
+
+global_rss:
+  - name: reuters_business
+    url: https://feeds.reuters.com/reuters/businessNews
+    enabled: true
+  - name: cnbc_top
+    url: https://www.cnbc.com/id/100003114/device/rss/rss.html
+    enabled: true
+  - name: marketwatch_top
+    url: https://feeds.content.dowjones.io/public/rss/mw_topstories
+    enabled: true
+  - name: yahoo_finance
+    url: https://finance.yahoo.com/news/rssindex
+    enabled: true
+  - name: axios_markets
+    url: https://api.axios.com/feed/
+    enabled: true
+  # Bloomberg killed their public RSS years ago. Options for Phase 2:
+  #   (a) scrape https://www.bloomberg.com/markets
+  #   (b) use a proxy aggregator (e.g., Google News query for site:bloomberg.com)
+  #   (c) drop it and rely on Reuters/CNBC for the same beat
+  - name: bloomberg
+    url: ""
+    enabled: false
+    note: "No public RSS - decide approach in Phase 2"
+
+arabic_scraping:
+  - name: argaam
+    base_url: https://www.argaam.com/ar
+    enabled: true
+  - name: mubasher
+    base_url: https://www.mubasher.info/
+    enabled: true
+  - name: aleqtisadiah
+    base_url: https://www.aleqt.com/
+    enabled: true
+  - name: cnbc_arabia
+    base_url: https://www.cnbcarabia.com/
+    enabled: true
+  - name: asharq_business
+    base_url: https://asharq.com/
+    enabled: true
+
+subscriptions:
+  wsj:
+    enabled: true
+    requires_cookies: true
+    sections:
+      - https://www.wsj.com/news/markets
+      - https://www.wsj.com/news/economy
+  ft:
+    enabled: true
+    requires_cookies: true
+    sections:
+      - https://www.ft.com/markets
+      - https://www.ft.com/companies
+
+apis:
+  alpha_vantage:
+    enabled: true
+    indices: [SPX, IXIC, DJI]
+  fred:
+    enabled: true
+    series: [CPIAUCSL, UNRATE, DFF, DGS10]  # CPI, unemployment, fed funds, 10y
+  finnhub:
+    enabled: true
+    category: general  # general | forex | crypto | merger
+
+official:
+  tadawul:
+    enabled: true
+    base_url: https://www.saudiexchange.sa/
+
+gmail:
+  enabled: true
+  source_label: Newsletters
+  processed_label: Processed
